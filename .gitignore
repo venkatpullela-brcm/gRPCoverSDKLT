@@ -1,3 +1,7 @@
 vagrant/.vagrant/
 vagrant/*.log
 *.o
+sdklt_server
+sdklt_client
+sdklt.grpc.pb.h
+sdklt.pb.h

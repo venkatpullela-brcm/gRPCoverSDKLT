@@ -7,10 +7,10 @@
 #include <grpcpp/health_check_service_interface.h>
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 
-#include "sdklt.grpc.pb.h" 
+#include "sdklt.grpc.pb.h"
 
 /* BCM Headers */
-#ifdef __cplusplus 
+#ifdef __cplusplus
  extern "C" {
 #endif
 #include <unistd.h>
@@ -85,7 +85,7 @@ class SdkLTServiceImpl final : public Api::Service {
             state->set_message("bsl mgmt init failed");
             return Status::OK;
         }
- 
+
         rv = cli_init(isc);
         if (SHR_FAILURE(rv)) {
             state->set_message("CLI init failed");
@@ -117,9 +117,9 @@ class SdkLTServiceImpl final : public Api::Service {
         }
         state->set_message("Successfully initialized Unit");
         return Status::OK;
-        
+
     }
-    
+
     Status bcmShell(ServerContext* context, const ShellRequest *shell, ShellState *state) override {
         std::cout << "******************************************" << std::endl;
         std::cout << "\t BCM Shell RPC called" << std::endl;
@@ -130,7 +130,7 @@ class SdkLTServiceImpl final : public Api::Service {
         strcpy(cstr, shell->cmd().c_str());
         std::cout<<"Executing Command : "<<cstr<<std::endl;
         bcma_cli_bshell(shell->unit(), cstr);
-        state->set_message("Executed Command");  
+        state->set_message("Executed Command");
         delete [] cstr;
 
         return Status::OK;
@@ -158,7 +158,7 @@ class SdkLTServiceImpl final : public Api::Service {
         std::cout << "\t Open Read RPC called" << std::endl;
         std::cout << "device id value: " << read->device_id() << std::endl;
         std::cout << "role id value: " << read->role_id() << std::endl;
-        
+
         std::cout << "lt_name value: " << read->lt_name() << std::endl;
         char *cstr = new char[read->lt_name().length()+1];
         std::cout<<"lt_name : "<< read->lt_name()<<" Len: "<<read->lt_name().length()<<std::endl;
@@ -168,11 +168,11 @@ class SdkLTServiceImpl final : public Api::Service {
         char *key = new char[read->key().length()+1];
         std::cout<<"key : "<< read->key()<<" Len: "<<read->key().length()<<std::endl;
         strcpy(key, read->key().c_str());
-        
-        int rv = 0;
 
+        int rv = 0;
         bcmlt_entry_handle_t entry_hdl;
-        std::uint64_t data = 0;
+        std::uint64_t vlan_id = 0;
+        bcmlt_entry_info_t e_info;
 
         rv = bcmlt_entry_allocate(read->device_id(), cstr, &entry_hdl);
         if (SHR_FAILURE(rv)) {
@@ -181,8 +181,11 @@ class SdkLTServiceImpl final : public Api::Service {
             return Status::OK;
         }
 
+        std::cout << "entry hdl: " << entry_hdl << std::endl;
+
         /* Commit the entry synchronously */
-        rv = bcmlt_custom_entry_commit(entry_hdl, BCMLT_OPCODE_LOOKUP,
+        rv = bcmlt_custom_entry_commit(entry_hdl,
+                                       BCMLT_OPCODE_TRAVERSE,
                                        BCMLT_PRIORITY_NORMAL);
         if (SHR_FAILURE(rv)) {
             response->set_message(shr_errmsg(rv));
@@ -190,8 +193,8 @@ class SdkLTServiceImpl final : public Api::Service {
             return Status::OK;
         }
 
-        rv = bcmlt_entry_field_get(entry_hdl, key, &data);
-        std::cout << "data: " << data << std::endl;
+        rv = bcmlt_entry_field_get(entry_hdl, key, &vlan_id);
+        std::cout << "vlan_id: " << vlan_id << std::endl;
         if (SHR_FAILURE(rv)) {
             response->set_message(shr_errmsg(rv));
             response->set_success(false);
@@ -231,16 +234,25 @@ class SdkLTServiceImpl final : public Api::Service {
             response->set_success(false);
             return Status::OK;
         }
+        std::cout << "entry hdl: " << entry_hdl << std::endl;
 
         rv = bcmlt_entry_field_add(entry_hdl, "VLAN_ID", 11);
         if (SHR_FAILURE(rv)) {
             response->set_message(shr_errmsg(rv));
             response->set_success(false);
             return Status::OK;
-        } 
+        }
+        rv = bcmlt_entry_field_add(entry_hdl, "VLAN_STG_ID", 1);
+        if (SHR_FAILURE(rv)) {
+            response->set_message(shr_errmsg(rv));
+            response->set_success(false);
+            return Status::OK;
+        }
 
         /* Commit the entry */
-        rv = bcmlt_custom_entry_commit(entry_hdl, BCMLT_OPCODE_INSERT, BCMLT_PRIORITY_NORMAL);
+        rv = bcmlt_custom_entry_commit(entry_hdl,
+                                       BCMLT_OPCODE_INSERT,
+                                       BCMLT_PRIORITY_NORMAL);
         if (SHR_FAILURE(rv)) {
             response->set_message(shr_errmsg(rv));
             response->set_success(false);
@@ -304,20 +316,20 @@ class SdkLTServiceImpl final : public Api::Service {
         /* commit the entry sychronously */
         rv = bcmlt_entry_commit(entry_hdl, op, prio);
         if (SHR_FAILURE(rv)) {
-            std::cout << "bcm entry commit failed error code: " << rv << " failure reason: " 
+            std::cout << "bcm entry commit failed error code: " << rv << " failure reason: "
             << shr_errmsg(rv) << std::endl;
             return rv;
         }
 
         rv = bcmlt_entry_info_get(entry_hdl, &entry_info);
         if (SHR_FAILURE(rv)) {
-            std::cout << "bcmlt entry info get failed error code: " << rv <<  " failure reason: " 
+            std::cout << "bcmlt entry info get failed error code: " << rv <<  " failure reason: "
             << shr_errmsg(rv) << std::endl;
             return rv;
         }
 
         if (entry_info.status != SHR_E_NONE) {
-            std::cout << "unit: " << entry_info.unit << " commit to LT: " << entry_info.table_name <<  
+            std::cout << "unit: " << entry_info.unit << " commit to LT: " << entry_info.table_name <<
             " failed status: " << shr_errmsg(entry_info.status) << "\n";
             return entry_info.status;
         }
@@ -342,13 +354,13 @@ class SdkLTServiceImpl final : public Api::Service {
         /* fetch info  */
         rv = bcmlt_entry_info_get(entry_hdl, &entry_info);
         if (SHR_FAILURE(rv)) {
-            std::cout << "bcmlt entry info get failed error code: " << rv <<  " failure reason: " 
+            std::cout << "bcmlt entry info get failed error code: " << rv <<  " failure reason: "
             << shr_errmsg(rv) << std::endl;
             return rv;
         }
-        
+
         if (entry_info.status != SHR_E_NONE) {
-            std::cout << "unit: " << entry_info.unit << " commit to LT: " << entry_info.table_name <<  
+            std::cout << "unit: " << entry_info.unit << " commit to LT: " << entry_info.table_name <<
             " failed status: " << shr_errmsg(entry_info.status) << "\n";
             return entry_info.status;
         }
@@ -375,7 +387,7 @@ SdkLTServer() {
     server->Wait();
 }
 
-int 
+int
 main()
 {
     SdkLTServer();
