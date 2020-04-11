@@ -163,6 +163,7 @@ install_grpc()
     sudo make install
     sudo ldconfig
     cd ../../
+    install_protobuf ${dest_folder}/third_party/protobuf
     cmd=$(which grpc_cpp_plugin)
     if [[ -z ${cmd} ]]; then
         echo "Unable to find grpc_cpp_plugin: ${cmd}"
@@ -292,8 +293,6 @@ main()
     install_packages_deps
     set_time_zone
     install_python_deps
-    # install protobuf
-    install_protobuf
     # install grpc dependencies
     install_grpc
     set_yaml_env

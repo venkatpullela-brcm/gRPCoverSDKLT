@@ -20,7 +20,7 @@ using sdklt::WriteRequest;
 using sdklt::WriteResponse;
 using sdklt::ReadRequest;
 using sdklt::ReadResponse;
-using sdklt::Uint128;
+//using sdklt::Uint128;
 
  struct read_map {
     std::uint64_t device_id;
