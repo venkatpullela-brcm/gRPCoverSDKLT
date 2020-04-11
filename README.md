@@ -14,7 +14,7 @@ This is the Basic Version of "SDKLT over gRPC" in C++.
 
 * Installation
 There are two ways to build the OpenNPL GRPC and SDKLT:
-1. Virtual machine (vagrant) - Currently working
+1. Virtual machine (vagrant) - (Recommended method)
 2. Docker (WIP)
 
 #### Building virtual machine using Vagrant and Virtualbox ####
@@ -23,7 +23,7 @@ There are two ways to build the OpenNPL GRPC and SDKLT:
 https://www.virtualbox.org/wiki/Downloads
 ```
 
-2. Install Vagrant on MAC OSX or Linux OS. Please note I havent tested on Windows 10 Desktop (WIP).
+2. Install Vagrant on any of the following operating system MAC OSX, Linux OS and Windows 10.
 ```
 Follow the guide of installation guide
 https://www.vagrantup.com/downloads.html
@@ -53,6 +53,8 @@ Please Note: open two terminal one for client other for server
 ```
 vagrant halt
 ```
+
+After this step please move on to the topic "Running the application"
 
 #### Instructions to build OpenNPL and SDKLT using docker container  ####
 
