@@ -41,12 +41,15 @@
 #include <bcma/ha/bcma_ha.h>
 #include <bcma/sys/bcma_sys_conf_sdk.h>
 #include <bcma/cli/bcma_cli_bshell.h>
+#include <bcma/bsl/bcma_bslenable.h>
+#include <bcma/bsl/bcma_bslsink.h>
+#include <bcma/bsl/bcma_bslcons.h>
 
 #ifdef __cplusplus
  }
 #endif
 
-static bcma_sys_conf_t sys_conf, *isc;
+bcma_sys_conf_t sys_conf, *isc;
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -64,8 +67,10 @@ using sdklt::ReadRequest;
 using sdklt::ReadResponse;
 using sdklt::Api;
 
+extern int bcma_grpc_out_hook(bsl_meta_t *meta, const char *format, va_list args);
 
 class SdkLTServiceImpl final : public Api::Service {
+
     Status bcmInit(ServerContext* context, const InitRequest *request,
             InitState *state) override {
         int rv = 0;
@@ -80,7 +85,8 @@ class SdkLTServiceImpl final : public Api::Service {
             std::cout << " Successfully Initialized sys conf" << std::endl;
         }
 
-        rv = bcma_bslmgmt_init();
+        //rv = bcma_bslmgmt_init();
+		rv = bcma_bslgrpc_init();
         if (SHR_FAILURE(rv)) {
             state->set_message("bsl mgmt init failed");
             return Status::OK;
@@ -273,6 +279,13 @@ class SdkLTServiceImpl final : public Api::Service {
 
     }
 
+    static int cli_cmd_process_ctrlc(void *data)
+    {
+        bcma_cli_t *cli = (bcma_cli_t *)data;
+        return bcma_cli_cmd_process(cli, cli->ibuf);
+
+    }
+
     int cli_init(bcma_sys_conf_t *sc)
     {
         /* Initialize basic CLI */
@@ -367,21 +380,94 @@ class SdkLTServiceImpl final : public Api::Service {
         std::cout << "unit: " << entry_info.unit << " PT: " << entry_info.table_name << " commit success \n";
     }
 
+    Status RemoteShell(ServerContext* context, const ShellRequest *shell, ShellState *state) override {
+        char *cstr = new char[shell->cmd().length()+1];
+        cmdResp.clear();
+
+        std::cout << "******************************************" << std::endl;
+        std::cout << "\t Remote Shell" << std::endl;
+        std::cout << "command (unit:"<<isc->cli->cur_unit<<") "<<shell->cmd()<<std::endl;
+
+        strcpy(cstr, shell->cmd().c_str());
+
+        memset(isc->cli->ibuf, 0, sizeof(isc->cli->ibuf));
+        strcpy(isc->cli->ibuf, cstr);
+
+        bcma_cli_ctrlc_exec(isc->cli, cli_cmd_process_ctrlc, (void *)isc->cli);
+        state->set_message(cmdResp);
+        delete [] cstr;
+        return Status::OK;
+    }
+
+    int bcma_bslgrpc_init();
+
+public:
+	void appendReply(std::string reply);
+
+    /* Per Connection Variables */
+private:
+	std::string		cmdResp;
 };
 
+void
+SdkLTServiceImpl::appendReply(std::string reply)
+{
+    cmdResp.append(reply);
+}
+
+int
+SdkLTServiceImpl::bcma_bslgrpc_init()
+{
+    bsl_config_t bsl_config;
+    bcma_bslenable_init();
+
+    bsl_config_t_init(&bsl_config);
+
+    bsl_config.out_hook = bcma_grpc_out_hook;
+    bsl_config.check_hook = NULL;
+    bsl_init(&bsl_config);
+
+    /* Initialize output hook */
+    bcma_bslsink_init();
+
+    /* Create console sink */
+    bcma_bslcons_init();
+
+    /* Create file sink */
+    //bcma_bslfile_init();
+
+    return 0;
+}
+
+SdkLTServiceImpl sdkltService;
+
+int
+bcma_grpc_out_hook(bsl_meta_t *meta, const char *format, va_list args)
+{
+    va_list args2;
+    va_copy(args2, args);
+
+    char buf[1+ vsnprintf(NULL, 0, format, args)];
+    va_end(args);
+
+    vsnprintf(buf, sizeof buf, format, args2);
+    va_end(args2);
+
+    sdkltService.appendReply(std::string(buf));
+	return 0;
+}
 
 void
 SdkLTServer() {
-    std::string server_address("0.0.0.0:50051");
-    SdkLTServiceImpl sdklt_service;
+    std::string serverAddress("0.0.0.0:50051");
 
     grpc::EnableDefaultHealthCheckService(true);
     grpc::reflection::InitProtoReflectionServerBuilderPlugin();
     ServerBuilder builder;
 
-    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+    builder.AddListeningPort(serverAddress, grpc::InsecureServerCredentials());
 
-    builder.RegisterService(&sdklt_service);
+    builder.RegisterService(&sdkltService);
     std::unique_ptr<Server> server(builder.BuildAndStart());
     std::cout<<"Listening on 50051...."<<std::endl;
     server->Wait();

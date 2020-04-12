@@ -115,13 +115,34 @@ class sdkltClient {
             return response.message();
         }
 
+		std::string rShell(int unit, std::string cmd) {
+			ShellRequest shell;
+			ShellState shellRet;
+			ClientContext context;
+			Status status;
+
+			shell.set_unit(unit);
+			shell.set_cmd(cmd);
+
+
+			status = stub_->RemoteShell(&context, shell, &shellRet);
+			if (!status.ok()) {
+				return "Communication Failed";
+			}
+			return shellRet.message();
+
+		}
+
+
     private:
         std::unique_ptr<Api::Stub> stub_;
 };
 
+
 int
 main() {
     sdkltClient sdklt_client(grpc::CreateChannel("0.0.0.0:50051", grpc::InsecureChannelCredentials()));
+    std::string cmd;
 
     std::cout << "******************************************" << std::endl;   
     std::cout<<"Initializing chip"<<std::endl;
@@ -147,12 +168,27 @@ main() {
     rmp.key = "VLAN_ID";
     std::cout<<sdklt_client.openRead(rmp)<<std::endl;;
 
+    /* Getting in Remote Shell */
+    std::cout << "******************************************" << std::endl;
+    while (1) {
+        std::cout<<"rShell.0>";
+        getline(std::cin, cmd);
+        if (cmd.length() == 0) {
+            continue;
+        }
+        if (cmd.compare("quit") == 0) {
+            break;
+        }
+        std::cout<<sdklt_client.rShell(0, cmd);
+    }
+    std::cout << "******************************************" << std::endl;
+
     /* Calling the shutdown */
     std::cout << "******************************************" << std::endl;
     std::cout<<"bcmmgmt shutdown"<<std::endl;
     bool flag = true;
     std::cout<<sdklt_client.bcmShutdown(flag)<<std::endl;
     std::cout << "******************************************" << std::endl;
-    
+
     return 0;
 }

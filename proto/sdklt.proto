@@ -18,6 +18,8 @@ service Api {
     // Write the table based on
     rpc openWrite(WriteRequest) returns (WriteResponse) {}
     rpc openRead(ReadRequest) returns (ReadResponse) {}
+    // Remote Shell
+    rpc RemoteShell(ShellRequest) returns (ShellState) {}
 }
 
 //---------------------------------BCM library related -----------------------
