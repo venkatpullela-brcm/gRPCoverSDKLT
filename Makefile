@@ -61,22 +61,23 @@ HOST_SYSTEM = $(shell uname | cut -f 1 -d_)
 SYSTEM ?= $(HOST_SYSTEM)
 CXX = g++
 CPPFLAGS += `pkg-config --cflags protobuf grpc`
-CXXFLAGS += -std=c++11 $(SDK_INCLUDES)
+CXXFLAGS += -std=c++11 -ggdb -O0 $(SDK_INCLUDES)
 ifeq ($(SYSTEM),Darwin)
 LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++`\
            -pthread\
            -lgrpc++_reflection\
-           -ldl
+           -ldl -lrt
 else
 LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++`\
            -pthread\
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
-           -ldl -lrt -ggdb
+           -ldl -lrt
 endif
 
 include $(SDK)/appl/make/yaml.mk
 LDFLAGS += $(YAML_LDFLAGS)
 LDFLAGS += $(YAML_LDLIBS) $(OPENSRC_LIBS)
+CMAKE_C_FLAGS +="-ggdb -O0"
 
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
@@ -84,27 +85,35 @@ GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
 SDK_LDFLAGS = $(SDK)/appl/sdklib/build/$(TARGET_PLATFORM)/lib/libsdklt.a
 SDK_LDFLAGS += $(YAML_LDFLAGS) $(OPENSRC_LIBS)
 PROTOS_PATH = proto
+BUILD_DIR := build
 
 vpath sdklt.proto $(PROTOS_PATH)
 
-all: system-check sdklt_server sdklt_client 
+all: system-check sdklt_server sdklt_client clean_pb 
 
 sdklt_client: sdklt.pb.o sdklt.grpc.pb.o sdklt_client.o 
-	$(CXX) $^ $(LDFLAGS) -o $@
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $^ $(LDFLAGS) -o $(BUILD_DIR)/$@
 
 sdklt_server: sdklt.pb.o sdklt.grpc.pb.o sdklt_server.o
-	$(CXX) $^ $(SDK_LDFLAGS) $(SDK_INCLUDES) $(LDFLAGS) -o $@
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $^ $(SDK_LDFLAGS) $(SDK_INCLUDES) $(LDFLAGS) -o $(BUILD_DIR)/$@
+
+clean_pb:
+	rm -f *.pb.cc *.pb.h *.o
 
 .PRECIOUS: sdklt.grpc.pb.cc
 sdklt.grpc.pb.cc: sdklt.proto
+	mkdir -p $(BUILD_DIR)
 	$(PROTOC) -I $(PROTOS_PATH) --grpc_out=. --plugin=protoc-gen-grpc=$(GRPC_CPP_PLUGIN_PATH) $<
 
 .PRECIOUS: sdklt.pb.cc
 sdklt.pb.cc: sdklt.proto
+	mkdir -p $(BUILD_DIR)
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
 
 clean:
-	rm -f *.o *.pb.cc *.pb.h sdklt_server sdklt_client 
+	rm -rf $(BUILD_DIR)
 
 
 # The following is to test your system and ensure a smoother experience.
