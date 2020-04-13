@@ -23,9 +23,28 @@
 # Authors: Kaushik, Koneru
 #
 
+PROJ_NAME   := gRPCoverSDKLT
+mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
+current_dir := $(notdir $(patsubst %/,%,$(dir $(mkfile_path))))
+SDKLT_GRPC  := $(dir $(filter-out /$(PROJ_NAME),$(abspath $(MAKEFILE_LIST))))
+
+SDKLT_MOD_FOLDER= $(SDKLT_GRPC)/sdklt/src
+
 ifndef SDK
-nosdk:; @echo 'The $$SDK environment variable is not set'; exit 1
+ifneq ($(wildcard $(SDKLT_MOD_FOLDER)/*),)
+$(info )
+$(info )
+$(info )
+$(info SDK is not set, Using SDKLT Submodule)
+$(info )
+$(info )
+$(shell sleep 1)
 else
+nosdk:; @echo 'The $$SDK environment variable is not set and SDKLT Submodule is not initialized'; exit 1
+endif
+endif
+
+SDK ?=$(SDKLT_MOD_FOLDER)
 
 ifndef TARGET_PLATFORM_DIR
 TARGET_PLATFORM_DIR = $(SDK)/appl/make
@@ -55,12 +74,18 @@ GRPC_CPP_PLUGIN = grpc_cpp_plugin
 PROTOS_PATH = proto
 BUILD_DIR := build
 
-all: system-check grpc 
+all: system-check compile-sdk grpc 
+
+compile-sdk:
+	@echo "Compiling SDK $(SDK)"
+	$(MAKE) -C $(SDK)/appl/demo SDK=$(SDK) TARGET_PLATFORM=$(TARGET_PLATFORM)
 
 grpc:
-	$(MAKE) -C src/
+	@echo "Compiling gRPC Server and gRPC Client"
+	$(MAKE) -C src/ SDK=$(SDK)
 
 clean:
+	$(MAKE) -C $(SDK) SDK=$(SDK) clean
 	rm -rf $(BUILD_DIR)
 
 
@@ -115,6 +140,5 @@ ifneq ($(HAS_PLUGIN),true)
 endif
 ifneq ($(SYSTEM_OK),true)
 	@false
-endif
 endif
 endif

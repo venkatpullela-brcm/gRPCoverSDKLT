@@ -1,0 +1,3 @@
+[submodule "sdklt"]
+	path = sdklt
+	url = https://github.com/Broadcom-Network-Switching-Software/SDKLT.git
