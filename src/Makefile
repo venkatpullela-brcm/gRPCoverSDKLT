@@ -25,7 +25,7 @@
 
 ifndef SDK
 nosdk:; @echo 'The $$SDK environment variable is not set'; exit 1
-else
+endif
 
 ifndef TARGET_PLATFORM_DIR
 TARGET_PLATFORM_DIR = $(SDK)/appl/make
@@ -35,7 +35,7 @@ ifndef TARGET_PLATFORM
 
 help:
 	@echo
-	@echo Broadcom SDKLT demo application makefile.
+	@echo Broadcom SDKLT gRPC DEMO application makefile.
 	@echo
 	@echo Please specify a target platform, e.g.:
 	@echo
@@ -46,19 +46,79 @@ help:
 clean: help
 
 else
+include $(TARGET_PLATFORM_DIR)/$(TARGET_PLATFORM).mk
+
+# Build the SDK library from here
+SDKLIB = $(SDK)/appl/sdklib
+
+# Build the Linux kernel modules from here
+SDKMOD = $(SDK)/appl/linux
+
+# Place the library build objects here
+SDK_BLDDIR = $(SDKLIB)/build/$(TARGET_PLATFORM)
+
+# Install SDK header files here
+SDK_INCDIR = $(SDK_BLDDIR)/include/sdklt
+
+# Install SDK library files here
+SDK_LIBDIR = $(SDK_BLDDIR)/lib
+
+SDK_INCLUDES += -I$(SDK_INCDIR)
 
 HOST_SYSTEM = $(shell uname | cut -f 1 -d_)
 SYSTEM ?= $(HOST_SYSTEM)
+CXX = g++
+CPPFLAGS += `pkg-config --cflags protobuf grpc`
+CXXFLAGS += -std=c++11 -ggdb -O0 $(SDK_INCLUDES)
+ifeq ($(SYSTEM),Darwin)
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++`\
+           -pthread\
+           -lgrpc++_reflection\
+           -ldl -lrt
+else
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++`\
+           -pthread\
+           -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
+           -ldl -lrt
+endif
+
+include $(SDK)/appl/make/yaml.mk
+LDFLAGS += $(YAML_LDFLAGS)
+LDFLAGS += $(YAML_LDLIBS) $(OPENSRC_LIBS)
+CMAKE_C_FLAGS +="-ggdb -O0"
 
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
-PROTOS_PATH = proto
-BUILD_DIR := build
+GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
+SDK_LDFLAGS = $(SDK)/appl/sdklib/build/$(TARGET_PLATFORM)/lib/libsdklt.a
+SDK_LDFLAGS += $(YAML_LDFLAGS) $(OPENSRC_LIBS)
+PROTOS_PATH = ../proto
+BUILD_DIR := ../build
 
-all: system-check grpc 
+vpath sdklt.proto $(PROTOS_PATH)
 
-grpc:
-	$(MAKE) -C src/
+all: system-check sdklt_server sdklt_client clean_pb 
+
+sdklt_client: sdklt.pb.o sdklt.grpc.pb.o sdklt_client.o 
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $^ $(LDFLAGS) -o $(BUILD_DIR)/$@
+
+sdklt_server: sdklt.pb.o sdklt.grpc.pb.o sdklt_server.o
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $^ $(SDK_LDFLAGS) $(SDK_INCLUDES) $(LDFLAGS) -o $(BUILD_DIR)/$@
+
+clean_pb:
+	rm -f *.pb.cc *.pb.h *.o
+
+.PRECIOUS: sdklt.grpc.pb.cc
+sdklt.grpc.pb.cc: sdklt.proto
+	mkdir -p $(BUILD_DIR)
+	$(PROTOC) -I $(PROTOS_PATH) --grpc_out=. --plugin=protoc-gen-grpc=$(GRPC_CPP_PLUGIN_PATH) $<
+
+.PRECIOUS: sdklt.pb.cc
+sdklt.pb.cc: sdklt.proto
+	mkdir -p $(BUILD_DIR)
+	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -115,6 +175,5 @@ ifneq ($(HAS_PLUGIN),true)
 endif
 ifneq ($(SYSTEM_OK),true)
 	@false
-endif
 endif
 endif
